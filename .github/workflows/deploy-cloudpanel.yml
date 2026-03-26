@@ -1,0 +1,43 @@
+name: Deploy to CloudPanel
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            cd ~/htdocs/${{ secrets.SITE_DOMAIN }}
+
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Cliente (Vite → client/dist, servido por Express en producción)
+            cd client
+            npm ci
+            npm run build
+            cd ..
+
+            # Servidor (Express + Socket.IO)
+            cd server
+            npm ci
+            npm run build
+            cd ..
+
+            # Reiniciar Node (mismo patrón que tu otro proyecto: delete + start)
+            pm2 delete juego-server || true
+            pm2 start ecosystem.config.cjs
+            pm2 save

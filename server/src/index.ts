@@ -3,6 +3,9 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { randomUUID } from "crypto";
 import { networkInterfaces } from "os";
+import { existsSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 
 const HOST = process.env.HOST ?? "0.0.0.0";
 
@@ -90,13 +93,29 @@ function snapshot() {
 }
 
 const app = express();
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: { origin: true },
-});
+app.set("trust proxy", 1);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true, players: players.size });
+});
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const staticDir =
+  process.env.STATIC_DIR ?? join(__dirname, "..", "..", "client", "dist");
+
+if (existsSync(staticDir)) {
+  app.use(express.static(staticDir));
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/socket.io")) return next();
+    res.sendFile(join(staticDir, "index.html"), (err) => {
+      if (err) next(err);
+    });
+  });
+}
+
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: { origin: true },
 });
 
 io.on("connection", (socket) => {
