@@ -20,7 +20,7 @@ function readPort() {
   }
   const fromEnv = Number(process.env.PORT);
   if (!Number.isNaN(fromEnv) && fromEnv > 0) return fromEnv;
-  return 3000;
+  return 3020;
 }
 
 const PORT = readPort();
