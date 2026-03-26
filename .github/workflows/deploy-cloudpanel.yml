@@ -17,7 +17,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
+          port: ${{ secrets.SSH_PORT || 22 }}
           script: |
             set -e
             cd ~/htdocs/${{ secrets.SITE_DOMAIN }}
@@ -37,9 +37,11 @@ jobs:
             npm run build
             cd ..
 
-            # Puerto = App Port de CloudPanel (PM2 lee server/.port; ver ecosystem.config.cjs)
+            # Debe ser el MISMO número que "App Port" del sitio en CloudPanel (Nginx → 127.0.0.1:PUERTO).
+            # Si APP_PORT no está en GitHub Secrets, se usa 3020 (igual que ecosystem.config.cjs / .port.example).
+            # Si CloudPanel usa otro puerto y no defines el secret, Node y Nginx no coinciden → 502 Bad Gateway.
             P="${{ secrets.APP_PORT }}"
-            [ -z "$P" ] && P=3000
+            [ -z "$P" ] && P=3020
             echo "$P" > server/.port
 
             # Reiniciar Node (mismo patrón que tu otro proyecto: delete + start)
