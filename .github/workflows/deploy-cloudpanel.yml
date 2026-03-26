@@ -37,6 +37,11 @@ jobs:
             npm run build
             cd ..
 
+            # Puerto = App Port de CloudPanel (PM2 lee server/.port; ver ecosystem.config.cjs)
+            P="${{ secrets.APP_PORT }}"
+            [ -z "$P" ] && P=3000
+            echo "$P" > server/.port
+
             # Reiniciar Node (mismo patrón que tu otro proyecto: delete + start)
             pm2 delete juego-server || true
             pm2 start ecosystem.config.cjs

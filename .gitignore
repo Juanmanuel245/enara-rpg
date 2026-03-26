@@ -10,6 +10,9 @@ build/
 .env.*
 !.env.example
 
+# Puerto de producción (CloudPanel); copia de .port.example o lo escribe el deploy
+server/.port
+
 # Logs
 *.log
 npm-debug.log*
