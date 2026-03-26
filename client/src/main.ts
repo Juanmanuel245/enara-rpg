@@ -18,7 +18,38 @@ type StateMsg = {
 
 const TEAM_COLORS = [0x3b82f6, 0xef4444];
 
+function askPlayerName(): Promise<string> {
+  return new Promise((resolve) => {
+    const screen = document.getElementById("name-screen");
+    const form = document.getElementById("name-form") as HTMLFormElement | null;
+    const input = document.getElementById("player-name") as HTMLInputElement | null;
+    const err = document.getElementById("name-error");
+    if (!screen || !form || !input || !err) {
+      resolve(`Heroe_${Math.floor(Math.random() * 999)}`);
+      return;
+    }
+    const showError = (msg: string) => {
+      err.hidden = false;
+      err.textContent = msg;
+    };
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const raw = input.value.trim();
+      if (!raw) {
+        showError("Escribe un nombre para tu personaje.");
+        input.focus();
+        return;
+      }
+      err.hidden = true;
+      screen.classList.add("hidden");
+      resolve(raw.slice(0, 24));
+    });
+  });
+}
+
 async function bootstrap() {
+const playerName = await askPlayerName();
+
 const root = document.getElementById("app");
 if (!root) throw new Error("#app no encontrado");
 
@@ -74,12 +105,11 @@ const socket: Socket = io({
   transports: ["websocket"],
 });
 
-const name = `Heroe_${Math.floor(Math.random() * 999)}`;
 const teamId = Math.random() < 0.5 ? 0 : 1;
 
 socket.on("connect", () => {
-  socket.emit("join", { name, teamId });
-  hud.text = `${name} · equipo ${teamId + 1} · WASD`;
+  socket.emit("join", { name: playerName, teamId });
+  hud.text = `${playerName} · equipo ${teamId + 1} · WASD`;
 });
 
 socket.on("state", (data: StateMsg) => {
