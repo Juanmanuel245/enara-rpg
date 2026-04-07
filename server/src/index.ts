@@ -7,6 +7,16 @@ import { existsSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
+import {
+  circleHitsSolid,
+  loadMapCollision,
+  mapH,
+  mapW,
+  PLAYER_RADIUS,
+} from "./mapCollision.js";
+
+loadMapCollision();
+
 const HOST = process.env.HOST ?? "0.0.0.0";
 
 function lanIpv4Urls(port: number): string[] {
@@ -24,14 +34,13 @@ function lanIpv4Urls(port: number): string[] {
 }
 
 const PORT = Number(process.env.PORT) || 3000;
-const MAP_W = 2000;
-const MAP_H = 2000;
 const PLAYER_SPEED = 220;
 const TICK_MS = 50;
 const MAX_HP = 100;
 
 type InputState = { w: boolean; a: boolean; s: boolean; d: boolean };
 
+/** 0 = sur, 1 = norte, 2 = este, 3 = oeste (coincide con filas del spritesheet de movimiento). */
 type Player = {
   id: string;
   socketId: string;
@@ -42,16 +51,33 @@ type Player = {
   maxHp: number;
   teamId: number;
   input: InputState;
+  facing: number;
 };
 
 const players = new Map<string, Player>();
 
 function spawnPosition(teamId: number): { x: number; y: number } {
   const margin = 80;
-  if (teamId === 0) {
-    return { x: margin + Math.random() * 400, y: MAP_H / 2 + (Math.random() - 0.5) * 400 };
+  const cx = mapW / 2;
+  const cy = mapH / 2;
+  const r = PLAYER_RADIUS;
+  for (let i = 0; i < 80; i++) {
+    let x: number;
+    let y: number;
+    if (teamId === 0) {
+      x = margin + Math.random() * 200;
+      y = cy + (Math.random() - 0.5) * 200;
+    } else {
+      x = mapW - margin - Math.random() * 200;
+      y = cy + (Math.random() - 0.5) * 200;
+    }
+    x = Math.max(r, Math.min(mapW - r, x));
+    y = Math.max(r, Math.min(mapH - r, y));
+    if (!circleHitsSolid(x, y, r)) {
+      return { x, y };
+    }
   }
-  return { x: MAP_W - margin - Math.random() * 400, y: MAP_H / 2 + (Math.random() - 0.5) * 400 };
+  return { x: cx, y: cy };
 }
 
 function emptyInput(): InputState {
@@ -60,6 +86,7 @@ function emptyInput(): InputState {
 
 function tick() {
   const dt = TICK_MS / 1000;
+  const r = PLAYER_RADIUS;
   for (const p of players.values()) {
     let dx = 0;
     let dy = 0;
@@ -68,27 +95,53 @@ function tick() {
     if (p.input.a) dx -= 1;
     if (p.input.d) dx += 1;
     const len = Math.hypot(dx, dy);
-    if (len > 0) {
-      dx /= len;
-      dy /= len;
-      p.x = Math.min(MAP_W, Math.max(0, p.x + dx * PLAYER_SPEED * dt));
-      p.y = Math.min(MAP_H, Math.max(0, p.y + dy * PLAYER_SPEED * dt));
+    if (len === 0) continue;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      p.facing = dx > 0 ? 2 : 3;
+    } else {
+      p.facing = dy > 0 ? 0 : 1;
+    }
+    dx /= len;
+    dy /= len;
+    const step = PLAYER_SPEED * dt;
+    let nx = p.x + dx * step;
+    let ny = p.y + dy * step;
+    nx = Math.max(r, Math.min(mapW - r, nx));
+    ny = Math.max(r, Math.min(mapH - r, ny));
+
+    if (!circleHitsSolid(nx, ny, r)) {
+      p.x = nx;
+      p.y = ny;
+    } else {
+      if (!circleHitsSolid(nx, p.y, r)) p.x = nx;
+      if (!circleHitsSolid(p.x, ny, r)) p.y = ny;
     }
   }
 }
 
 function snapshot() {
   return {
-    map: { w: MAP_W, h: MAP_H },
-    players: [...players.values()].map((p) => ({
-      id: p.id,
-      name: p.name,
-      x: p.x,
-      y: p.y,
-      hp: p.hp,
-      maxHp: p.maxHp,
-      teamId: p.teamId,
-    })),
+    map: { w: mapW, h: mapH },
+    players: [...players.values()].map((p) => {
+      let dx = 0;
+      let dy = 0;
+      if (p.input.w) dy -= 1;
+      if (p.input.s) dy += 1;
+      if (p.input.a) dx -= 1;
+      if (p.input.d) dx += 1;
+      const moving = Math.hypot(dx, dy) > 0;
+      return {
+        id: p.id,
+        name: p.name,
+        x: p.x,
+        y: p.y,
+        hp: p.hp,
+        maxHp: p.maxHp,
+        teamId: p.teamId,
+        facing: p.facing,
+        moving,
+      };
+    }),
   };
 }
 
@@ -139,9 +192,11 @@ io.on("connection", (socket) => {
         maxHp: MAX_HP,
         teamId,
         input: emptyInput(),
+        facing: 0,
       };
       players.set(id, player);
       socket.data.playerId = id;
+      socket.emit("joined", { playerId: id });
       io.emit("state", snapshot());
       ack?.();
     },
